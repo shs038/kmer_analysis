@@ -1,0 +1,88 @@
+import numpy as np
+import pandas as pd
+from matplotlib import pyplot as plt
+import seaborn as sns
+import scipy
+from scipy import stats
+from itertools import product
+%matplotlib inline
+import itertools
+#motif data
+motif_df = pd.read_csv('/home/shs038/kmer_analysis_data/motifs/ARID1B-human_1.txt', sep='\t', header=None, skiprows=1)
+motif_df.columns = ['A','C','G','T']
+
+#sequence data
+sequences_df = pd.read_csv('/home/shs038/kmer_analysis_data/sequences_new/ARID1B-human_1_ENCFF249TYS.txt', sep='\t', header=None)
+index_df=sequences_df.iloc[::2]
+index_df.columns=['ID']
+chr_sequences_df=sequences_df.iloc[1::2]
+chr_sequences_df.index=index_df['ID'].values
+chr_sequences_df.columns=['Sequence']
+def count_kmer(motif_data,sequence_data):
+    #remove position at the beginning and the end where score <0.5
+    bool_df = (motif_data.astype(float) >= 0.5) + 0
+    row_sums = bool_df.sum(axis=1).values
+    start = 0
+    for i in range(len(row_sums)):
+        if row_sums[i] > 0:
+            start = i
+            break
+    end = 0 
+    for i in range(len(row_sums)):
+        if row_sums[-(i+1)] > 0:
+            end = len(row_sums) - (i+1)
+            break
+    trimmed_bool_df = motif_data.ix[start:end,:]
+    #find score >=0.3 at each position in the rest of the motif to create kmers.
+    trimmed_bool_df= (trimmed_bool_df.astype(float) >=0.3)+0
+    all_nucs = []
+    for i in trimmed_bool_df.index.values:
+        current_nucs = []
+        if trimmed_bool_df.ix[i,'A'] == 1:
+            current_nucs.append('A')
+        if trimmed_bool_df.ix[i,'C'] == 1:
+            current_nucs.append('C')
+        if trimmed_bool_df.ix[i,'G'] == 1:
+            current_nucs.append('G')
+        if trimmed_bool_df.ix[i,'T'] == 1:
+            current_nucs.append('T')
+        all_nucs.append(current_nucs)
+    k_mer=[]
+    for prod in itertools.product(*all_nucs):
+        k_mer.append(''.join(prod))
+    
+    #count each kmer
+    #create a empty datafrom for k-mers count
+    count_frame=np.zeros((sequence_data.shape[0],len(k_mer)),dtype=np.int)#a dataframe to store future data
+    count_frame=pd.DataFrame(count_frame, columns=k_mer)
+    count_frame.index=sequence_data.index.values
+    #count over each sequence
+    for i in range (sequence_data.shape[0]):
+        string = sequence_data.ix[i,0]
+        string = str(string)
+        for j in range(len(k_mer)):
+            counts=string.count(k_mer[j])
+            count_frame.ix[i,j]=counts
+    #Normalize the count to one if have the motif
+    count_frame=(count_frame> 0) + 0
+    return count_frame
+def build_frequence(sequence_count):
+    column_sums = sequence_count.sum(axis=0).values
+    frequence_frame=np.zeros((sequence_count.shape[1],2),dtype=np.int)#a dataframe to store future data
+    frequence_frame=pd.DataFrame(frequence_frame, columns=['expected frequence','actual frequence'])
+    frequence_frame.index=sequence_count.columns.values
+    frequence_frame['expected frequence']= sequence_count.shape[0]/sequence_count.shape[1]
+    for i in range(sequence_count.shape[1]):
+        frequence_frame.ix[i,1]=column_sums[i]
+    return frequence_frame
+count=count_kmer(motif_df,chr_sequences_df)
+frequence_df=build_frequence(count)
+plt.hist(count.ix[:,0],bins=[-0.5,0.5,1.5])
+plt.ylabel('Frequency')
+plt.xlabel('count')
+plt.title('AGATAAG') 
+sns.distplot(count.ix[:,0])
+plt.ylabel('Frequency')
+plt.xlabel('count')
+plt.title('AGATAAG') 
+frequence_df
